@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EuroRail Simulator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#07090f;--surface:#0d111c;--surface2:#131928;--border:#1a2638;--border2:#223050;
+  --text:#c2d4e8;--text-dim:#5a7490;--accent:#e8a000;--accent-dim:#4a3200;--accent-glow:rgba(232,160,0,0.15);
+  --regional:#a855f7;--national:#22c55e;--european:#3b82f6;--hsl:#ef4444;
+  --land:#111928;--land-hover:#18243a;--water:#050710;--country-border:#1e2d42;
+  --success:#10b981;--warning:#f59e0b;--danger:#ef4444;--info:#60a5fa
+}
+body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column;user-select:none}
+
+/* HEADER */
+#header{display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;height:52px;position:relative;z-index:10}
+#header::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:0.4}
+.logo{font-size:22px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--accent)}
+.logo em{color:var(--text);font-style:normal}
+.logo sup{font-size:10px;color:var(--text-dim);letter-spacing:1px;font-weight:400;margin-left:6px}
+.stat-group{display:flex;gap:28px}
+.stat{display:flex;flex-direction:column;align-items:flex-end}
+.stat-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-dim);font-family:'IBM Plex Mono',monospace}
+.stat-value{font-size:14px;font-weight:500;font-family:'IBM Plex Mono',monospace;color:var(--text)}
+.stat-value.pos{color:var(--success)}.stat-value.neg{color:var(--danger)}.stat-value.acc{color:var(--accent)}
+
+/* LAYOUT */
+#main{display:flex;flex:1;overflow:hidden}
+
+/* SIDEBAR LEFT */
+#sidebar{width:272px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
+.sbar-sec{padding:12px;border-bottom:1px solid var(--border)}
+.sec-title{font-size:9px;text-transform:uppercase;letter-spacing:2px;color:var(--text-dim);margin-bottom:10px;font-family:'IBM Plex Mono',monospace}
+.mode-row{display:flex;gap:4px}
+.mode-btn{flex:1;padding:8px 6px;border:1px solid var(--border2);background:var(--surface2);color:var(--text-dim);font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:600;cursor:pointer;text-align:center;transition:all .15s;letter-spacing:.5px}
+.mode-btn:hover{color:var(--text);border-color:var(--border)}
+.mode-btn.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+.btn{display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:'Rajdhani',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;letter-spacing:.5px;width:100%;margin-bottom:6px}
+.btn:hover{background:var(--border);border-color:var(--border2);color:var(--text)}
+.btn.primary{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+.btn.primary:hover{background:var(--accent);color:#000}
+.btn:last-child{margin-bottom:0}
+.btn-ico{font-size:15px;line-height:1}
+.legend{display:flex;flex-direction:column;gap:6px}
+.leg-item{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--text-dim)}
+.leg-line{width:22px;height:2px;border-radius:1px}
+.leg-line.hsl{height:3px}
+#projects-list{flex:1;overflow-y:auto;padding:6px}
+#projects-list::-webkit-scrollbar{width:3px}
+#projects-list::-webkit-scrollbar-track{background:var(--bg)}
+#projects-list::-webkit-scrollbar-thumb{background:var(--border2)}
+.proj-card{background:var(--surface2);border:1px solid var(--border);padding:9px 10px;margin-bottom:6px;cursor:pointer;transition:border-color .15s}
+.proj-card:hover{border-color:var(--border2)}
+.proj-card.sel{border-color:var(--accent);background:rgba(232,160,0,0.04)}
+.proj-head{display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:5px}
+.proj-name{font-size:12px;font-weight:700;line-height:1.3;flex:1}
+.proj-badge{font-size:9px;padding:2px 6px;font-family:'IBM Plex Mono',monospace;letter-spacing:.5px;white-space:nowrap;flex-shrink:0}
+.badge-planning{background:#10103a;border:1px solid #303090;color:#8080ff}
+.badge-approval{background:#1a1000;border:1px solid #604000;color:var(--warning)}
+.badge-construction{background:#001a08;border:1px solid #006020;color:var(--success)}
+.badge-open{background:#1a1000;border:1px solid var(--accent-dim);color:var(--accent)}
+.prog-bar{height:2px;background:var(--border);margin-top:5px;border-radius:1px;overflow:hidden}
+.prog-fill{height:100%;transition:width .4s;border-radius:1px}
+.prog-fill.planning{background:#8080ff}.prog-fill.approval{background:var(--warning)}.prog-fill.construction{background:var(--success)}.prog-fill.open{background:var(--accent)}
+.proj-meta{display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);font-family:'IBM Plex Mono',monospace}
+
+/* MAP */
+#map-container{flex:1;position:relative;overflow:hidden;background:var(--water)}
+#map-svg{width:100%;height:100%;cursor:grab}
+#map-svg:active{cursor:grabbing}
+.country{fill:var(--land);stroke:var(--country-border);stroke-width:.5;cursor:pointer;transition:fill .2s}
+.country:hover{fill:var(--land-hover)}
+.country.sel-country{fill:#1a2840;stroke:var(--accent);stroke-width:1.5}
+.city-g{cursor:pointer}
+.city-circle{transition:r .15s}
+.city-g:hover .city-circle{r:7}
+.city-g.c-start .city-circle{fill:var(--accent)}
+.city-g.c-end .city-circle{fill:var(--success)}
+.city-label{font-family:'Rajdhani',sans-serif;font-size:10px;fill:var(--text-dim);pointer-events:none;text-anchor:middle;font-weight:500}
+.rail-line{fill:none;stroke-linecap:round;cursor:pointer}
+.rail-line.regional{stroke:var(--regional)}.rail-line.national{stroke:var(--national)}.rail-line.european{stroke:var(--european)}.rail-line.hsl{stroke:var(--hsl)}
+.rail-line.planning{stroke-dasharray:3 5;opacity:.4}.rail-line.approval{stroke-dasharray:8 4;opacity:.55}.rail-line.construction{stroke-dasharray:14 4;opacity:.75}.rail-line.open{opacity:1}
+.preview-line{fill:none;stroke:var(--accent);stroke-width:1.5;stroke-dasharray:6 4;opacity:.7;pointer-events:none;animation:dashAnim 1.2s linear infinite}
+@keyframes dashAnim{to{stroke-dashoffset:-20}}
+#map-hint{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);background:rgba(7,9,15,.88);border:1px solid var(--border2);padding:7px 18px;font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-dim);pointer-events:none;white-space:nowrap}
+#map-hint span{color:var(--accent)}
+
+/* RIGHT PANEL */
+#rpanel{width:230px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
+#detail-body{padding:12px;flex:1;overflow-y:auto}
+#detail-body::-webkit-scrollbar{width:3px}
+#detail-body::-webkit-scrollbar-track{background:var(--bg)}
+#detail-body::-webkit-scrollbar-thumb{background:var(--border2)}
+.detail-title{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:12px;letter-spacing:.5px;line-height:1.3}
+.drow{display:flex;justify-content:space-between;align-items:center;font-size:11px;padding:5px 0;border-bottom:1px solid var(--border)}
+.drow:last-of-type{border-bottom:none}
+.dl{color:var(--text-dim)}.dv{font-family:'IBM Plex Mono',monospace;font-size:10px;text-align:right}
+.dv.pos{color:var(--success)}.dv.acc{color:var(--accent)}.dv.warn{color:var(--warning)}
+.phase-tl{margin-top:14px}
+.phase-step{display:flex;align-items:flex-start;gap:9px;margin-bottom:11px}
+.phase-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:3px}
+.phase-dot.done{background:var(--success)}.phase-dot.active{background:var(--accent);box-shadow:0 0 6px var(--accent)}.phase-dot.pending{background:var(--border2)}
+.phase-lbl{font-size:12px;font-weight:600}.phase-sub{font-size:10px;color:var(--text-dim);font-family:'IBM Plex Mono',monospace}
+.empty-hint{color:var(--text-dim);font-size:11px;text-align:center;margin-top:28px;line-height:1.8;font-family:'IBM Plex Mono',monospace}
+
+/* BOTTOM BAR */
+#bottom-bar{display:flex;align-items:center;justify-content:center;gap:12px;padding:0 20px;background:var(--surface);border-top:1px solid var(--border);height:46px;flex-shrink:0}
+#time-display{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:500;color:var(--accent);min-width:108px;text-align:center;letter-spacing:1px}
+.spd-btn{padding:5px 14px;border:1px solid var(--border2);background:var(--surface2);color:var(--text-dim);font-family:'IBM Plex Mono',monospace;font-size:12px;cursor:pointer;transition:all .15s;letter-spacing:.5px}
+.spd-btn:hover{color:var(--text);border-color:var(--border)}
+.spd-btn.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+.speed-divider{width:1px;height:20px;background:var(--border)}
+
+/* MODAL */
+#modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(2px)}
+#modal-overlay.hidden{display:none}
+#modal{background:var(--surface);border:1px solid var(--border2);padding:24px;width:500px;max-width:95vw;position:relative}
+#modal::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--european),var(--hsl),var(--accent));opacity:.8}
+.modal-title{font-size:17px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent);margin-bottom:4px}
+.modal-sub{font-size:13px;color:var(--text-dim);margin-bottom:18px;font-family:'IBM Plex Mono',monospace}
+.modal-sub span{color:var(--text)}
+.form-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-dim);margin-bottom:8px;display:block;font-family:'IBM Plex Mono',monospace}
+.opt-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:14px}
+.opt-grid.cols3{grid-template-columns:1fr 1fr 1fr}
+.opt-btn{padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:600;cursor:pointer;text-align:left;transition:all .15s}
+.opt-btn:hover{border-color:var(--border)}
+.opt-btn.sel{border-color:var(--accent);background:var(--accent-dim)}
+.opt-btn.sel .opt-sub{color:#9a6000}
+.opt-name{font-size:14px;font-weight:700}.opt-sub{font-size:10px;color:var(--text-dim);font-family:'IBM Plex Mono',monospace;margin-top:2px}
+.cost-box{background:var(--surface2);border:1px solid var(--border);padding:12px;margin:14px 0}
+.crow{display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px}
+.crow:last-child{margin-bottom:0;padding-top:6px;border-top:1px solid var(--border)}
+.crow .cl{color:var(--text-dim);font-family:'IBM Plex Mono',monospace}
+.crow .cv{font-family:'IBM Plex Mono',monospace;font-weight:500}
+.crow .cv.warn{color:var(--warning)}.crow .cv.pos{color:var(--success)}.crow .cv.big{color:var(--accent);font-size:13px}
+.modal-acts{display:flex;gap:8px;margin-top:14px}
+.modal-acts .btn{margin-bottom:0;flex:1}
+
+/* TOOLTIP */
+#tooltip{position:fixed;background:var(--surface);border:1px solid var(--border2);padding:8px 12px;font-size:11px;pointer-events:none;z-index:200;opacity:0;transition:opacity .1s;font-family:'IBM Plex Mono',monospace;max-width:200px}
+#tooltip.show{opacity:1}
+.tt-name{font-size:13px;font-weight:700;font-family:'Rajdhani',sans-serif;color:var(--accent);margin-bottom:3px}
+
+/* NOTIFICATION */
+#notif{position:fixed;top:60px;right:14px;background:var(--surface);border:1px solid var(--border2);border-left-width:3px;padding:10px 14px;z-index:300;opacity:0;transform:translateX(10px);transition:all .25s;font-size:13px;max-width:280px}
+#notif.show{opacity:1;transform:translateX(0)}
+#notif.success{border-left-color:var(--success)}
+#notif.warning{border-left-color:var(--warning)}
+#notif.error{border-left-color:var(--danger)}
+
+/* LOADING */
+#loading{position:absolute;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;z-index:50}
+.load-txt{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:3px;text-transform:uppercase}
+.load-bar{width:180px;height:1px;background:var(--border);overflow:hidden}
+.load-fill{height:100%;background:var(--accent);animation:loadPulse 1.4s ease-in-out infinite}
+@keyframes loadPulse{0%{width:0;margin-left:0}50%{width:100%;margin-left:0}100%{width:0%;margin-left:100%}}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div id="header">
+  <div class="logo">Euro<em>Rail</em><sup>SIMULATOR</sup></div>
+  <div class="stat-group">
+    <div class="stat">
+      <span class="stat-label">Budget</span>
+      <span class="stat-value acc" id="s-budget">€50.0B</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Inkomen/mnd</span>
+      <span class="stat-value pos" id="s-revenue">€0M</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Lijnen open</span>
+      <span class="stat-value" id="s-open">0</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">In bouw</span>
+      <span class="stat-value" id="s-build">0</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Passagiers/jr</span>
+      <span class="stat-value" id="s-pass">0M</span>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+
+  <!-- LEFT SIDEBAR -->
+  <div id="sidebar">
+    <div class="sbar-sec">
+      <div class="sec-title">Modus</div>
+      <div class="mode-row">
+        <button class="mode-btn active" id="btn-mode-eu" onclick="setMode('european')">🌍 Europees</button>
+        <button class="mode-btn" id="btn-mode-nat" onclick="setMode('national')">🏳️ Nationaal</button>
+      </div>
+    </div>
+    <div class="sbar-sec">
+      <div class="sec-title">Acties</div>
+      <button class="btn primary" id="btn-newline" onclick="startPlanning()"><span class="btn-ico">＋</span> Nieuwe Spoorlijn</button>
+      <button class="btn" onclick="cancelPlanning()"><span class="btn-ico">✕</span> Annuleren</button>
+      <button class="btn" onclick="resetZoom()" id="btn-reset-zoom" style="display:none"><span class="btn-ico">⊞</span> Heel Europa</button>
+    </div>
+    <div class="sbar-sec">
+      <div class="sec-title">Legenda</div>
+      <div class="legend">
+        <div class="leg-item"><div class="leg-line" style="background:var(--regional)"></div><span>Regionaal 120 km/h</span></div>
+        <div class="leg-item"><div class="leg-line" style="background:var(--national)"></div><span>Nationaal 200 km/h</span></div>
+        <div class="leg-item"><div class="leg-line" style="background:var(--european)"></div><span>Europees 250 km/h</span></div>
+        <div class="leg-item"><div class="leg-line hsl" style="background:var(--hsl)"></div><span>HSL 320+ km/h</span></div>
+      </div>
+    </div>
+    <div class="sbar-sec" style="flex:0 0 auto">
+      <div class="sec-title">Projecten (<span id="proj-count">0</span>)</div>
+    </div>
+    <div id="projects-list"></div>
+  </div>
+
+  <!-- MAP -->
+  <div id="map-container">
+    <div id="loading">
+      <div class="load-txt">Kaart laden…</div>
+      <div class="load-bar"><div class="load-fill"></div></div>
+    </div>
+    <svg id="map-svg"></svg>
+    <div id="map-hint">Selecteer <span>twee steden</span> om een spoorlijn te plannen</div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div id="rpanel">
+    <div class="sbar-sec"><div class="sec-title">Project Detail</div></div>
+    <div id="detail-body">
+      <div class="empty-hint">Selecteer een<br>project of klik<br>op een lijn</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- BOTTOM BAR -->
+<div id="bottom-bar">
+  <button class="spd-btn active" id="spd-0" onclick="setSpeed(0)">⏸</button>
+  <button class="spd-btn" id="spd-1" onclick="setSpeed(1)">▶ 1×</button>
+  <button class="spd-btn" id="spd-2" onclick="setSpeed(2)">▶▶ 2×</button>
+  <button class="spd-btn" id="spd-5" onclick="setSpeed(5)">▶▶▶ 5×</button>
+  <div class="speed-divider"></div>
+  <div id="time-display">Jan 2024</div>
+</div>
+
+<!-- MODAL -->
+<div id="modal-overlay" class="hidden">
+  <div id="modal">
+    <div class="modal-title">Spoorlijn Plannen</div>
+    <div class="modal-sub" id="modal-route"><span id="m-from">-</span> → <span id="m-to">-</span></div>
+
+    <label class="form-label">Lijntype</label>
+    <div class="opt-grid">
+      <button class="opt-btn" onclick="pickLineType('regional')" id="ot-regional">
+        <div class="opt-name" style="color:var(--regional)">Regionaal</div>
+        <div class="opt-sub">120 km/h · €2M/km</div>
+      </button>
+      <button class="opt-btn" onclick="pickLineType('national')" id="ot-national">
+        <div class="opt-name" style="color:var(--national)">Nationaal</div>
+        <div class="opt-sub">200 km/h · €5M/km</div>
+      </button>
+      <button class="opt-btn" onclick="pickLineType('european')" id="ot-european">
+        <div class="opt-name" style="color:var(--european)">Europees</div>
+        <div class="opt-sub">250 km/h · €10M/km</div>
+      </button>
+      <button class="opt-btn" onclick="pickLineType('hsl')" id="ot-hsl">
+        <div class="opt-name" style="color:var(--hsl)">HSL ⚡</div>
+        <div class="opt-sub">320 km/h · €25M/km</div>
+      </button>
+    </div>
+
+    <label class="form-label">Infrastructuur</label>
+    <div class="opt-grid cols3">
+      <button class="opt-btn" onclick="pickInfra('standard')" id="oi-standard">
+        <div class="opt-name">Standaard</div><div class="opt-sub">×1.0 kosten</div>
+      </button>
+      <button class="opt-btn" onclick="pickInfra('bridge')" id="oi-bridge">
+        <div class="opt-name">🌉 Brug</div><div class="opt-sub">×1.8 kosten</div>
+      </button>
+      <button class="opt-btn" onclick="pickInfra('tunnel')" id="oi-tunnel">
+        <div class="opt-name">🚇 Tunnel</div><div class="opt-sub">×3.0 kosten</div>
+      </button>
+    </div>
+
+    <div class="cost-box">
+      <div class="crow"><span class="cl">Afstand</span><span class="cv" id="cs-dist">—</span></div>
+      <div class="crow"><span class="cl">Terrein</span><span class="cv" id="cs-terrain">—</span></div>
+      <div class="crow"><span class="cl">Bouwtijd</span><span class="cv" id="cs-build">—</span></div>
+      <div class="crow"><span class="cl">Goedkeuring</span><span class="cv" id="cs-approval">—</span></div>
+      <div class="crow"><span class="cl">Verwacht inkomen</span><span class="cv pos" id="cs-rev">—</span></div>
+      <div class="crow"><span class="cl">Totale investering</span><span class="cv big" id="cs-cost">—</span></div>
+    </div>
+
+    <div class="modal-acts">
+      <button class="btn primary" onclick="confirmProject()" style="flex:2">✓ Bevestigen &amp; Starten</button>
+      <button class="btn" onclick="closeModal()">✕</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOOLTIP -->
+<div id="tooltip"><div class="tt-name" id="tt-n"></div><div id="tt-l1"></div><div id="tt-l2"></div></div>
+
+<!-- NOTIFICATION -->
+<div id="notif"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════
+const EU_IDS = new Set([8,20,40,56,70,100,112,191,196,203,208,233,246,250,276,
+  300,348,352,372,380,428,438,440,442,470,492,498,499,528,
+  578,616,620,642,674,688,703,705,724,752,756,792,804,826,807]);
+
+const COUNTRY_INFO = {
+  8:{n:'Albanië',d:8},20:{n:'Andorra',d:3},40:{n:'Oostenrijk',d:4},56:{n:'België',d:2},
+  70:{n:'Bosnië',d:8},100:{n:'Bulgarije',d:8},112:{n:'Belarus',d:10},191:{n:'Kroatië',d:6},
+  196:{n:'Cyprus',d:5},203:{n:'Tsjechië',d:5},208:{n:'Denemarken',d:2},233:{n:'Estland',d:4},
+  246:{n:'Finland',d:3},250:{n:'Frankrijk',d:5},276:{n:'Duitsland',d:4},300:{n:'Griekenland',d:7},
+  348:{n:'Hongarije',d:6},352:{n:'IJsland',d:4},372:{n:'Ierland',d:3},380:{n:'Italië',d:6},
+  428:{n:'Letland',d:4},438:{n:'Liechtenstein',d:3},440:{n:'Litouwen',d:4},442:{n:'Luxemburg',d:2},
+  470:{n:'Malta',d:4},492:{n:'Monaco',d:2},498:{n:'Moldavië',d:9},499:{n:'Montenegro',d:7},
+  528:{n:'Nederland',d:2},578:{n:'Noorwegen',d:3},616:{n:'Polen',d:6},620:{n:'Portugal',d:5},
+  642:{n:'Roemenië',d:8},674:{n:'San Marino',d:3},688:{n:'Servië',d:7},703:{n:'Slowakije',d:5},
+  705:{n:'Slovenië',d:4},724:{n:'Spanje',d:6},752:{n:'Zweden',d:3},756:{n:'Zwitserland',d:5},
+  792:{n:'Turkije',d:8},804:{n:'Oekraïne',d:9},826:{n:'VK',d:5},807:{n:'N. Macedonië',d:7}
+};
+
+const CITIES = [
+  // UK & Ireland
+  {id:'london',n:'London',lat:51.51,lon:-0.13,c:826,pop:9200000},
+  {id:'manchester',n:'Manchester',lat:53.48,lon:-2.24,c:826,pop:2800000},
+  {id:'birmingham',n:'Birmingham',lat:52.48,lon:-1.90,c:826,pop:2600000},
+  {id:'glasgow',n:'Glasgow',lat:55.86,lon:-4.25,c:826,pop:1800000},
+  {id:'edinburgh',n:'Edinburgh',lat:55.95,lon:-3.19,c:826,pop:530000},
+  {id:'leeds',n:'Leeds',lat:53.80,lon:-1.55,c:826,pop:750000},
+  {id:'dublin',n:'Dublin',lat:53.34,lon:-6.27,c:372,pop:1400000},
+  // France
+  {id:'paris',n:'Paris',lat:48.85,lon:2.35,c:250,pop:11000000},
+  {id:'lyon',n:'Lyon',lat:45.75,lon:4.85,c:250,pop:1700000},
+  {id:'marseille',n:'Marseille',lat:43.30,lon:5.37,c:250,pop:1600000},
+  {id:'bordeaux',n:'Bordeaux',lat:44.84,lon:-0.58,c:250,pop:900000},
+  {id:'lille',n:'Lille',lat:50.63,lon:3.07,c:250,pop:1000000},
+  {id:'strasbourg',n:'Strasbourg',lat:48.57,lon:7.75,c:250,pop:785000},
+  {id:'nantes',n:'Nantes',lat:47.22,lon:-1.55,c:250,pop:650000},
+  {id:'nice',n:'Nice',lat:43.71,lon:7.26,c:250,pop:340000},
+  // Germany
+  {id:'berlin',n:'Berlin',lat:52.52,lon:13.40,c:276,pop:3800000},
+  {id:'hamburg',n:'Hamburg',lat:53.55,lon:10.00,c:276,pop:1900000},
+  {id:'munich',n:'München',lat:48.14,lon:11.58,c:276,pop:1500000},
+  {id:'cologne',n:'Keulen',lat:50.94,lon:6.96,c:276,pop:1100000},
+  {id:'frankfurt',n:'Frankfurt',lat:50.11,lon:8.68,c:276,pop:760000},
+  {id:'stuttgart',n:'Stuttgart',lat:48.78,lon:9.18,c:276,pop:630000},
+  {id:'dusseldorf',n:'Düsseldorf',lat:51.22,lon:6.77,c:276,pop:620000},
+  {id:'dortmund',n:'Dortmund',lat:51.51,lon:7.47,c:276,pop:590000},
+  {id:'leipzig',n:'Leipzig',lat:51.34,lon:12.37,c:276,pop:600000},
+  {id:'dresden',n:'Dresden',lat:51.05,lon:13.74,c:276,pop:560000},
+  {id:'nuremberg',n:'Neurenberg',lat:49.45,lon:11.08,c:276,pop:520000},
+  // Benelux
+  {id:'amsterdam',n:'Amsterdam',lat:52.37,lon:4.90,c:528,pop:870000},
+  {id:'rotterdam',n:'Rotterdam',lat:51.92,lon:4.48,c:528,pop:640000},
+  {id:'thehague',n:'Den Haag',lat:52.08,lon:4.32,c:528,pop:540000},
+  {id:'brussels',n:'Brussel',lat:50.85,lon:4.35,c:56,pop:1800000},
+  {id:'antwerp',n:'Antwerpen',lat:51.22,lon:4.40,c:56,pop:530000},
+  {id:'liege',n:'Luik',lat:50.63,lon:5.58,c:56,pop:200000},
+  {id:'luxembourg',n:'Luxemburg',lat:49.61,lon:6.13,c:442,pop:130000},
+  // Spain & Portugal
+  {id:'madrid',n:'Madrid',lat:40.42,lon:-3.70,c:724,pop:6700000},
+  {id:'barcelona',n:'Barcelona',lat:41.39,lon:2.15,c:724,pop:5600000},
+  {id:'valencia',n:'Valencia',lat:39.47,lon:-0.38,c:724,pop:1800000},
+  {id:'seville',n:'Sevilla',lat:37.38,lon:-6.00,c:724,pop:1300000},
+  {id:'bilbao',n:'Bilbao',lat:43.26,lon:-2.93,c:724,pop:1000000},
+  {id:'zaragoza',n:'Zaragoza',lat:41.65,lon:-0.88,c:724,pop:700000},
+  {id:'malaga',n:'Málaga',lat:36.72,lon:-4.42,c:724,pop:580000},
+  {id:'lisbon',n:'Lissabon',lat:38.72,lon:-9.14,c:620,pop:2900000},
+  {id:'porto',n:'Porto',lat:41.16,lon:-8.63,c:620,pop:1700000},
+  // Italy
+  {id:'rome',n:'Rome',lat:41.90,lon:12.50,c:380,pop:4300000},
+  {id:'milan',n:'Milaan',lat:45.47,lon:9.19,c:380,pop:3200000},
+  {id:'naples',n:'Napels',lat:40.85,lon:14.27,c:380,pop:3100000},
+  {id:'turin',n:'Turijn',lat:45.07,lon:7.69,c:380,pop:880000},
+  {id:'florence',n:'Florence',lat:43.77,lon:11.26,c:380,pop:1000000},
+  {id:'venice',n:'Venetië',lat:45.44,lon:12.33,c:380,pop:850000},
+  {id:'bologna',n:'Bologna',lat:44.50,lon:11.34,c:380,pop:400000},
+  {id:'bari',n:'Bari',lat:41.11,lon:16.87,c:380,pop:320000},
+  {id:'catania',n:'Catania',lat:37.50,lon:15.09,c:380,pop:310000},
+  // Switzerland & Austria
+  {id:'zurich',n:'Zürich',lat:47.38,lon:8.54,c:756,pop:420000},
+  {id:'geneva',n:'Genève',lat:46.20,lon:6.15,c:756,pop:600000},
+  {id:'bern',n:'Bern',lat:46.95,lon:7.45,c:756,pop:130000},
+  {id:'basel',n:'Basel',lat:47.56,lon:7.59,c:756,pop:180000},
+  {id:'vienna',n:'Wenen',lat:48.21,lon:16.37,c:40,pop:1900000},
+  {id:'salzburg',n:'Salzburg',lat:47.80,lon:13.04,c:40,pop:160000},
+  {id:'graz',n:'Graz',lat:47.07,lon:15.44,c:40,pop:290000},
+  {id:'innsbruck',n:'Innsbruck',lat:47.27,lon:11.39,c:40,pop:130000},
+  // Scandinavia
+  {id:'stockholm',n:'Stockholm',lat:59.33,lon:18.07,c:752,pop:2400000},
+  {id:'gothenburg',n:'Göteborg',lat:57.71,lon:11.97,c:752,pop:1000000},
+  {id:'malmo',n:'Malmö',lat:55.61,lon:13.00,c:752,pop:350000},
+  {id:'oslo',n:'Oslo',lat:59.91,lon:10.75,c:578,pop:1000000},
+  {id:'bergen',n:'Bergen',lat:60.39,lon:5.32,c:578,pop:285000},
+  {id:'trondheim',n:'Trondheim',lat:63.43,lon:10.39,c:578,pop:210000},
+  {id:'copenhagen',n:'Kopenhagen',lat:55.68,lon:12.57,c:208,pop:1400000},
+  {id:'aarhus',n:'Aarhus',lat:56.16,lon:10.21,c:208,pop:350000},
+  {id:'helsinki',n:'Helsinki',lat:60.17,lon:24.94,c:246,pop:660000},
+  {id:'tampere',n:'Tampere',lat:61.50,lon:23.78,c:246,pop:240000},
+  // Eastern Europe
+  {id:'warsaw',n:'Warschau',lat:52.23,lon:21.01,c:616,pop:1800000},
+  {id:'krakow',n:'Kraków',lat:50.06,lon:19.94,c:616,pop:780000},
+  {id:'gdansk',n:'Gdańsk',lat:54.35,lon:18.64,c:616,pop:470000},
+  {id:'wroclaw',n:'Wrocław',lat:51.11,lon:17.04,c:616,pop:640000},
+  {id:'lodz',n:'Łódź',lat:51.77,lon:19.45,c:616,pop:680000},
+  {id:'prague',n:'Praag',lat:50.08,lon:14.44,c:203,pop:1300000},
+  {id:'brno',n:'Brno',lat:49.20,lon:16.61,c:203,pop:380000},
+  {id:'budapest',n:'Boedapest',lat:47.50,lon:19.04,c:348,pop:1800000},
+  {id:'debrecen',n:'Debrecen',lat:47.53,lon:21.63,c:348,pop:200000},
+  {id:'bratislava',n:'Bratislava',lat:48.15,lon:17.11,c:703,pop:480000},
+  {id:'zagreb',n:'Zagreb',lat:45.81,lon:15.98,c:191,pop:800000},
+  {id:'split',n:'Split',lat:43.51,lon:16.44,c:191,pop:178000},
+  {id:'ljubljana',n:'Ljubljana',lat:46.05,lon:14.51,c:705,pop:295000},
+  {id:'belgrade',n:'Belgrado',lat:44.82,lon:20.46,c:688,pop:1700000},
+  {id:'novi_sad',n:'Novi Sad',lat:45.27,lon:19.83,c:688,pop:290000},
+  {id:'bucharest',n:'Boekarest',lat:44.43,lon:26.10,c:642,pop:2200000},
+  {id:'cluj',n:'Cluj-Napoca',lat:46.77,lon:23.59,c:642,pop:320000},
+  {id:'timisoara',n:'Timișoara',lat:45.75,lon:21.23,c:642,pop:320000},
+  {id:'sofia',n:'Sofia',lat:42.70,lon:23.32,c:100,pop:1300000},
+  {id:'plovdiv',n:'Plovdiv',lat:42.15,lon:24.75,c:100,pop:345000},
+  {id:'athens',n:'Athene',lat:37.98,lon:23.73,c:300,pop:3700000},
+  {id:'thessaloniki',n:'Thessaloniki',lat:40.64,lon:22.94,c:300,pop:790000},
+  {id:'riga',n:'Riga',lat:56.95,lon:24.11,c:428,pop:630000},
+  {id:'vilnius',n:'Vilnius',lat:54.69,lon:25.28,c:440,pop:570000},
+  {id:'kaunas',n:'Kaunas',lat:54.90,lon:23.90,c:440,pop:300000},
+  {id:'tallinn',n:'Tallinn',lat:59.44,lon:24.75,c:233,pop:440000},
+  {id:'kyiv',n:'Kyiv',lat:50.45,lon:30.52,c:804,pop:3000000},
+  {id:'lviv',n:'Lviv',lat:49.84,lon:24.03,c:804,pop:730000},
+  {id:'kharkiv',n:'Kharkiv',lat:49.99,lon:36.23,c:804,pop:1400000},
+  {id:'odessa',n:'Odessa',lat:46.49,lon:30.74,c:804,pop:1000000},
+  {id:'minsk',n:'Minsk',lat:53.90,lon:27.57,c:112,pop:2000000},
+  {id:'istanbul',n:'Istanbul',lat:41.01,lon:28.96,c:792,pop:15000000},
+  {id:'ankara',n:'Ankara',lat:39.93,lon:32.87,c:792,pop:5700000},
+];
+
+const MOUNTAIN_REGIONS = [
+  {n:'Alpen',       lat0:43.5,lat1:48.5,lon0:5.5, lon1:17.0,m:2.6},
+  {n:'Pyreneeën',   lat0:42.0,lat1:43.8,lon0:-2.0,lon1:3.5, m:2.0},
+  {n:'Karpaten',    lat0:45.0,lat1:50.0,lon0:17.0,lon1:27.0,m:1.8},
+  {n:'Scandinavisch',lat0:56.0,lat1:71.0,lon0:4.0, lon1:22.0,m:1.6},
+  {n:'Dinarisch',   lat0:41.0,lat1:46.5,lon0:13.0,lon1:21.0,m:1.7},
+  {n:'Balkangebergte',lat0:41.0,lat1:44.0,lon0:21.0,lon1:28.0,m:1.5},
+  {n:'Centraal Massif',lat0:44.5,lat1:46.5,lon0:2.0,lon1:4.5,m:1.4},
+  {n:'Apennijnen',  lat0:37.0,lat1:44.5,lon0:10.0,lon1:16.0,m:1.5},
+  {n:'Iberisch gebergte',lat0:37.0,lat1:44.0,lon0:-9.0,lon1:-2.0,m:1.4},
+];
+
+const LINE_TYPES = {
+  regional: {n:'Regionaal', speed:120, cpm:2e6,  rpm:0.035e6, km_mo:35},
+  national: {n:'Nationaal', speed:200, cpm:5e6,  rpm:0.09e6,  km_mo:22},
+  european: {n:'Europees',  speed:250, cpm:10e6, rpm:0.18e6,  km_mo:14},
+  hsl:      {n:'HSL',       speed:320, cpm:25e6, rpm:0.40e6,  km_mo:8 },
+};
+
+const INFRA_TYPES = {
+  standard:{n:'Standaard',cm:1.0,tm:1.0},
+  bridge:  {n:'Brug',     cm:1.8,tm:1.4},
+  tunnel:  {n:'Tunnel',   cm:3.0,tm:2.0},
+};
+
+const MONTHS_NL=['Jan','Feb','Mrt','Apr','Mei','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
+
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+const S = {
+  budget: 50e9,
+  revPerMonth: 0,
+  totalPassengers: 0,
+  date: {y:2024,m:1},
+  speed: 0,
+  mode: 'european',
+  planning: false,
+  fromCity: null,
+  toCity: null,
+  projects: [],
+  selProj: null,
+  selCountry: null,
+  nextId: 1,
+  tickTimer: null,
+};
+
+let chosenLT = 'national', chosenIT = 'standard';
+
+// ═══════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════
+function hvs(a,b,c,d) {
+  const R=6371,dr=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180;
+  const x=Math.sin(dr/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dl/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+
+function terrainMult(a,b,c,d) {
+  let mx=1.0;
+  for(const pts of [[a,b],[.5*(a+c),.5*(b+d)],[c,d],[.25*(a+c)+.75*a,.25*(b+d)+.75*b],[.75*(c+a)+.25*a,.75*(d+b)+.25*b]]) {
+    for(const r of MOUNTAIN_REGIONS) {
+      if(pts[0]>=r.lat0&&pts[0]<=r.lat1&&pts[1]>=r.lon0&&pts[1]<=r.lon1) mx=Math.max(mx,r.m);
+    }
+  }
+  return mx;
+}
+
+function approvalMonths(c1,c2) {
+  const i1=COUNTRY_INFO[c1.c], i2=COUNTRY_INFO[c2.c];
+  const base=i1&&i2?Math.max(i1.d,i2.d):5;
+  const cross=c1.c!==c2.c?2:0;
+  return Math.round(base*0.9+cross+Math.random()*2.5);
+}
+
+function calcProj(c1,c2,lt,it) {
+  const L=LINE_TYPES[lt], I=INFRA_TYPES[it];
+  const dist=Math.round(hvs(c1.lat,c1.lon,c2.lat,c2.lon));
+  const ter=terrainMult(c1.lat,c1.lon,c2.lat,c2.lon);
+  const cost=dist*L.cpm*I.cm*ter;
+  const build=Math.ceil(dist/L.km_mo*I.tm*(ter*0.55+0.45));
+  const appr=approvalMonths(c1,c2);
+  const popF=Math.sqrt(c1.pop*c2.pop)/1e6;
+  const rev=L.rpm*Math.sqrt(dist)*popF*(lt==='hsl'?1.4:1.0);
+  const pass=rev/0.08; // approx passengers from revenue
+  return {dist,ter,cost,build,appr,plan:2,rev,pass:Math.round(pass)};
+}
+
+function fmoney(v) {
+  if(v>=1e9) return '€'+(v/1e9).toFixed(1)+'B';
+  if(v>=1e6) return '€'+(v/1e6).toFixed(0)+'M';
+  return '€'+(v/1e3).toFixed(0)+'K';
+}
+
+function fmonths(m) {
+  if(m<1) return '<1 mnd';
+  if(m<12) return m+' mnd';
+  const y=Math.floor(m/12),r=m%12;
+  return y+'j'+(r?' '+r+'mnd':'');
+}
+
+function fdate(d) { return MONTHS_NL[d.m-1]+' '+d.y; }
+
+function addMonth(d,n=1) {
+  let m=d.m+n,y=d.y;
+  while(m>12){m-=12;y++;}
+  return {y,m};
+}
+
+// ═══════════════════════════════════════════════════════
+// MAP SETUP
+// ═══════════════════════════════════════════════════════
+let svg,g,proj,gpath,zoom;
+let previewEl=null;
+
+async function initMap() {
+  const mc=document.getElementById('map-container');
+  const W=mc.clientWidth, H=mc.clientHeight;
+
+  svg=d3.select('#map-svg');
+  proj=d3.geoNaturalEarth1().center([18,54]).scale(620).translate([W/2,H/2]);
+  gpath=d3.geoPath().projection(proj);
+  g=svg.append('g');
+
+  zoom=d3.zoom().scaleExtent([0.4,22]).on('zoom',e=>{g.attr('transform',e.transform);});
+  svg.call(zoom);
+
+  // Load world TopoJSON
+  const world=await d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json');
+  const countries=topojson.feature(world,world.objects.countries);
+
+  // Countries
+  g.append('g').attr('class','cg')
+    .selectAll('path')
+    .data(countries.features.filter(f=>EU_IDS.has(+f.id)))
+    .enter().append('path')
+    .attr('class','country')
+    .attr('id',d=>'ct'+d.id)
+    .attr('d',gpath)
+    .on('click',(ev,d)=>{ if(S.mode==='national') zoomToCountry(d); })
+    .on('mousemove',(ev,d)=>{ const i=COUNTRY_INFO[+d.id]; if(i) showTT(ev,i.n,'',''); })
+    .on('mouseleave',hideTT);
+
+  // Lines layer
+  g.append('g').attr('class','lg');
+  // Cities layer (top)
+  g.append('g').attr('class','gg');
+
+  drawCities();
+  document.getElementById('loading').style.display='none';
+}
+
+function drawCities() {
+  const gg=g.select('.gg');
+  gg.selectAll('*').remove();
+
+  const visible = S.mode==='national' && S.selCountry
+    ? CITIES.filter(c=>c.c===+S.selCountry.id)
+    : CITIES;
+
+  visible.forEach(city=>{
+    const [x,y]=proj([city.lon,city.lat]);
+    if(!isFinite(x)||!isFinite(y)) return;
+    const r=city.pop>5e6?5:city.pop>2e6?4:city.pop>800000?3:2;
+    const grp=gg.append('g').attr('class','city-g').attr('id','cg-'+city.id).attr('transform',`translate(${x},${y})`);
+    grp.append('circle').attr('class','city-circle').attr('r',r)
+      .attr('fill','#e8a000').attr('stroke','#07090f').attr('stroke-width',1.2).attr('opacity',.9);
+    if(city.pop>600000) {
+      grp.append('text').attr('class','city-label').attr('y',-r-3).text(city.n);
+    }
+    grp.on('click',()=>onCityClick(city))
+       .on('mousemove',ev=>showTT(ev,city.n,COUNTRY_INFO[city.c]?.n||'',fmoney(city.pop/1e6*1e6).replace('€','')+' inw.'))
+       .on('mouseleave',hideTT);
+  });
+}
+
+function zoomToCountry(d) {
+  S.selCountry=d;
+  const info=COUNTRY_INFO[+d.id];
+  d3.selectAll('.country').classed('sel-country',false);
+  d3.select('#ct'+d.id).classed('sel-country',true);
+
+  const [[x0,y0],[x1,y1]]=gpath.bounds(d);
+  const W=document.getElementById('map-container').clientWidth;
+  const H=document.getElementById('map-container').clientHeight;
+  const scale=Math.min(10,0.75*Math.min(W/(x1-x0),H/(y1-y0)));
+  const cx=(x0+x1)/2, cy=(y0+y1)/2;
+
+  svg.transition().duration(650).call(
+    zoom.transform,
+    d3.zoomIdentity.translate(W/2,H/2).scale(scale).translate(-cx,-cy)
+  );
+  drawCities();
+  document.getElementById('btn-reset-zoom').style.display='flex';
+  if(info) showNotif(`${info.n} geselecteerd — bouw nationale lijnen`,'success');
+}
+
+function resetZoom() {
+  S.selCountry=null;
+  d3.selectAll('.country').classed('sel-country',false);
+  svg.transition().duration(600).call(zoom.transform,d3.zoomIdentity);
+  drawCities();
+  document.getElementById('btn-reset-zoom').style.display='none';
+  drawLines();
+}
+
+// ═══════════════════════════════════════════════════════
+// PLANNING
+// ═══════════════════════════════════════════════════════
+function startPlanning() {
+  S.planning=true; S.fromCity=null; S.toCity=null;
+  d3.selectAll('.city-g').classed('c-start',false).classed('c-end',false);
+  if(previewEl){previewEl.remove();previewEl=null;}
+  document.getElementById('map-hint').innerHTML='Klik op de <span>startstad</span>';
+  document.getElementById('btn-newline').classList.add('primary');
+  showNotif('Klik op een startstad','warning');
+}
+
+function cancelPlanning() {
+  S.planning=false; S.fromCity=null; S.toCity=null;
+  d3.selectAll('.city-g').classed('c-start',false).classed('c-end',false);
+  if(previewEl){previewEl.remove();previewEl=null;}
+  document.getElementById('map-hint').innerHTML='Selecteer <span>twee steden</span> om een spoorlijn te plannen';
+  document.getElementById('btn-newline').classList.remove('primary');
+  closeModal();
+}
+
+function onCityClick(city) {
+  if(!S.planning) return;
+  if(!S.fromCity) {
+    S.fromCity=city;
+    d3.select('#cg-'+city.id).classed('c-start',true);
+    document.getElementById('map-hint').innerHTML=`Van: <span>${city.n}</span> — klik op <span>eindstad</span>`;
+    showNotif('Klik op de eindstad','warning');
+    return;
+  }
+  if(city.id===S.fromCity.id) return;
+  S.toCity=city;
+  d3.select('#cg-'+city.id).classed('c-end',true);
+
+  // Preview line
+  if(previewEl){previewEl.remove();previewEl=null;}
+  const [x1,y1]=proj([S.fromCity.lon,S.fromCity.lat]);
+  const [x2,y2]=proj([S.toCity.lon,S.toCity.lat]);
+  previewEl=g.insert('line','.gg').attr('class','preview-line')
+    .attr('x1',x1).attr('y1',y1).attr('x2',x2).attr('y2',y2);
+
+  openModal();
+}
+
+function openModal() {
+  document.getElementById('m-from').textContent=S.fromCity.n;
+  document.getElementById('m-to').textContent=S.toCity.n;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+  pickLineType('national');
+  pickInfra('standard');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+function pickLineType(t) {
+  chosenLT=t;
+  ['regional','national','european','hsl'].forEach(x=>document.getElementById('ot-'+x).classList.toggle('sel',x===t));
+  updateCosts();
+}
+
+function pickInfra(t) {
+  chosenIT=t;
+  ['standard','bridge','tunnel'].forEach(x=>document.getElementById('oi-'+x).classList.toggle('sel',x===t));
+  updateCosts();
+}
+
+function updateCosts() {
+  if(!S.fromCity||!S.toCity) return;
+  const p=calcProj(S.fromCity,S.toCity,chosenLT,chosenIT);
+  document.getElementById('cs-dist').textContent=p.dist+' km';
+  const tn=MOUNTAIN_REGIONS.find(r=>{
+    const ml=.5*(S.fromCity.lat+S.toCity.lat),mn=.5*(S.fromCity.lon+S.toCity.lon);
+    return ml>=r.lat0&&ml<=r.lat1&&mn>=r.lon0&&mn<=r.lon1;
+  });
+  document.getElementById('cs-terrain').textContent=p.ter===1.0?'Vlak (×1.0)':((tn?tn.n:'Bergen')+' (×'+p.ter.toFixed(1)+')');
+  document.getElementById('cs-build').textContent=fmonths(p.build);
+  document.getElementById('cs-approval').textContent=fmonths(p.appr);
+  document.getElementById('cs-rev').textContent=fmoney(p.rev)+'/mnd';
+  document.getElementById('cs-cost').textContent=fmoney(p.cost);
+  document.getElementById('cs-cost').className='cv big'+(p.cost>S.budget?' neg':'');
+}
+
+function confirmProject() {
+  if(!S.fromCity||!S.toCity) return;
+  const p=calcProj(S.fromCity,S.toCity,chosenLT,chosenIT);
+  if(p.cost>S.budget){showNotif('Onvoldoende budget!','error');return;}
+
+  S.budget-=p.cost;
+  const proj={
+    id:S.nextId++,
+    nm:`${S.fromCity.n} — ${S.toCity.n}`,
+    c1:S.fromCity, c2:S.toCity,
+    lt:chosenLT, it:chosenIT,
+    dist:p.dist, ter:p.ter, cost:p.cost,
+    build:p.build, appr:p.appr, plan:p.plan,
+    rev:p.rev, pass:p.pass,
+    phase:'planning',
+    prog:0, mip:0,
+    startDate:{...S.date},
+    openDate:null,
+  };
+  S.projects.push(proj);
+  cancelPlanning();
+  updateUI();
+  drawLines();
+  showNotif(`Gepland: ${proj.nm}`,'success');
+}
+
+// ═══════════════════════════════════════════════════════
+// TICK
+// ═══════════════════════════════════════════════════════
+function tick() {
+  S.date=addMonth(S.date);
+  S.projects.forEach(pr=>{
+    if(pr.phase==='open'){S.budget+=pr.rev;return;}
+    pr.mip++;
+    const req=pr.phase==='planning'?pr.plan:pr.phase==='approval'?pr.appr:pr.build;
+    pr.prog=Math.min(1,pr.mip/req);
+    if(pr.mip>=req) nextPhase(pr);
+  });
+  S.revPerMonth=S.projects.filter(p=>p.phase==='open').reduce((s,p)=>s+p.rev,0);
+  S.totalPassengers=S.projects.filter(p=>p.phase==='open').reduce((s,p)=>s+p.pass*12,0);
+  updateUI();
+  drawLines();
+}
+
+function nextPhase(pr) {
+  const seq=['planning','approval','construction','open'];
+  const i=seq.indexOf(pr.phase);
+  if(i<seq.length-1){
+    pr.phase=seq[i+1]; pr.mip=0; pr.prog=0;
+    if(pr.phase==='open'){pr.openDate={...S.date};showNotif('🚂 Lijn geopend: '+pr.nm,'success');}
+    else if(pr.phase==='construction') showNotif('🏗️ Bouw gestart: '+pr.nm,'success');
+    else if(pr.phase==='approval') showNotif('📋 Goedkeuring: '+pr.nm,'warning');
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// DRAW LINES
+// ═══════════════════════════════════════════════════════
+function drawLines() {
+  const lg=g.select('.lg');
+  lg.selectAll('*').remove();
+
+  S.projects.forEach(pr=>{
+    const [x1,y1]=proj([pr.c1.lon,pr.c1.lat]);
+    const [x2,y2]=proj([pr.c2.lon,pr.c2.lat]);
+    const sw=pr.lt==='hsl'?3:pr.lt==='european'?2.5:pr.lt==='national'?2:1.5;
+    lg.append('line')
+      .attr('class',`rail-line ${pr.lt} ${pr.phase}`)
+      .attr('x1',x1).attr('y1',y1).attr('x2',x2).attr('y2',y2)
+      .attr('stroke-width',sw)
+      .on('mousemove',ev=>showTT(ev,pr.nm,LINE_TYPES[pr.lt].n+' · '+pr.dist+'km',
+        pr.phase==='open'?fmoney(pr.rev)+'/mnd':'Fase: '+PHASE_LABELS[pr.phase]))
+      .on('mouseleave',hideTT)
+      .on('click',()=>selProj(pr));
+  });
+
+  drawCities();
+}
+
+const PHASE_LABELS={planning:'Planfase',approval:'Goedkeuring',construction:'Bouw',open:'Open'};
+
+// ═══════════════════════════════════════════════════════
+// UI
+// ═══════════════════════════════════════════════════════
+function updateUI() {
+  document.getElementById('s-budget').textContent=fmoney(S.budget);
+  document.getElementById('s-revenue').textContent=fmoney(S.revPerMonth);
+  document.getElementById('s-open').textContent=S.projects.filter(p=>p.phase==='open').length;
+  document.getElementById('s-build').textContent=S.projects.filter(p=>p.phase==='construction').length;
+  const tp=S.totalPassengers;
+  document.getElementById('s-pass').textContent=tp>=1e6?(tp/1e6).toFixed(1)+'M':(tp/1e3).toFixed(0)+'K';
+  document.getElementById('time-display').textContent=fdate(S.date);
+  document.getElementById('proj-count').textContent=S.projects.length;
+  renderProjList();
+  if(S.selProj) renderDetail(S.selProj);
+}
+
+function renderProjList() {
+  const el=document.getElementById('projects-list');
+  el.innerHTML='';
+  [...S.projects].reverse().forEach(pr=>{
+    const d=document.createElement('div');
+    d.className='proj-card'+(S.selProj?.id===pr.id?' sel':'');
+    d.onclick=()=>selProj(pr);
+    const lt=LINE_TYPES[pr.lt];
+    d.innerHTML=`
+      <div class="proj-head">
+        <div class="proj-name">${pr.nm}</div>
+        <div class="proj-badge badge-${pr.phase}">${PHASE_LABELS[pr.phase]}</div>
+      </div>
+      <div class="proj-meta">
+        <span>${lt.n} · ${pr.dist}km</span>
+        <span>${pr.phase==='open'?'+'+fmoney(pr.rev)+'/mnd':''}</span>
+      </div>
+      <div class="prog-bar"><div class="prog-fill ${pr.phase}" style="width:${(pr.prog*100).toFixed(0)}%"></div></div>`;
+    el.appendChild(d);
+  });
+}
+
+function selProj(pr) {
+  S.selProj=pr;
+  renderProjList();
+  renderDetail(pr);
+}
+
+function renderDetail(pr) {
+  const el=document.getElementById('detail-body');
+  const lt=LINE_TYPES[pr.lt], it=INFRA_TYPES[pr.it];
+  const phases=['planning','approval','construction','open'];
+  const idx=phases.indexOf(pr.phase);
+  const durs={planning:pr.plan,approval:pr.appr,construction:pr.build,open:null};
+
+  el.innerHTML=`
+    <div class="detail-title">${pr.c1.n} → ${pr.c2.n}</div>
+    <div class="drow"><span class="dl">Type</span><span class="dv acc">${lt.n}</span></div>
+    <div class="drow"><span class="dl">Infra</span><span class="dv">${it.n}</span></div>
+    <div class="drow"><span class="dl">Afstand</span><span class="dv">${pr.dist} km</span></div>
+    <div class="drow"><span class="dl">Terrein</span><span class="dv">×${pr.ter.toFixed(1)}</span></div>
+    <div class="drow"><span class="dl">Investering</span><span class="dv warn">${fmoney(pr.cost)}</span></div>
+    <div class="drow"><span class="dl">Inkomen/mnd</span><span class="dv pos">${fmoney(pr.rev)}</span></div>
+    <div class="drow"><span class="dl">Pass./jaar</span><span class="dv">${(pr.pass/1e3).toFixed(0)}K</span></div>
+    <div class="drow"><span class="dl">Status</span><span class="dv">${PHASE_LABELS[pr.phase]}</span></div>
+    ${pr.phase!=='open'?`<div class="drow"><span class="dl">Voortgang</span><span class="dv">${(pr.prog*100).toFixed(0)}%</span></div>`:''}
+    ${pr.openDate?`<div class="drow"><span class="dl">Geopend</span><span class="dv pos">${fdate(pr.openDate)}</span></div>`:''}
+    <div class="phase-tl">
+      ${phases.map((ph,i)=>{
+        const dc=i<idx?'done':i===idx?'active':'pending';
+        const dur=durs[ph];
+        return `<div class="phase-step">
+          <div class="phase-dot ${dc}"></div>
+          <div>
+            <div class="phase-lbl">${PHASE_LABELS[ph]}</div>
+            ${dur?`<div class="phase-sub">${fmonths(dur)}</div>`:''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// SPEED / MODE
+// ═══════════════════════════════════════════════════════
+function setSpeed(sp) {
+  S.speed=sp;
+  if(S.tickTimer) clearInterval(S.tickTimer);
+  [0,1,2,5].forEach(x=>document.getElementById('spd-'+x).classList.toggle('active',x===sp));
+  if(sp>0) S.tickTimer=setInterval(tick,{1:1600,2:750,5:280}[sp]);
+}
+
+function setMode(m) {
+  S.mode=m;
+  document.getElementById('btn-mode-eu').classList.toggle('active',m==='european');
+  document.getElementById('btn-mode-nat').classList.toggle('active',m==='national');
+  if(m==='european'){
+    resetZoom();
+    showNotif('Europese modus: bouw internationale lijnen','success');
+  } else {
+    showNotif('Nationale modus: klik op een land om in te zoomen','warning');
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// TOOLTIP / NOTIFICATION
+// ═══════════════════════════════════════════════════════
+function showTT(ev,n,l1,l2) {
+  const tt=document.getElementById('tooltip');
+  document.getElementById('tt-n').textContent=n;
+  document.getElementById('tt-l1').textContent=l1;
+  document.getElementById('tt-l2').textContent=l2;
+  tt.style.left=(ev.clientX+14)+'px';
+  tt.style.top=(ev.clientY-8)+'px';
+  tt.classList.add('show');
+}
+function hideTT(){document.getElementById('tooltip').classList.remove('show');}
+
+let ntTimer;
+function showNotif(msg,type='success'){
+  const el=document.getElementById('notif');
+  el.textContent=msg; el.className='show '+type;
+  clearTimeout(ntTimer);
+  ntTimer=setTimeout(()=>el.classList.remove('show'),3200);
+}
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+initMap().then(()=>{
+  updateUI();
+  setSpeed(1);
+});
+</script>
+</body>
+</html>
